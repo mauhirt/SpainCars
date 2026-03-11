@@ -1,34 +1,33 @@
 """
 04_clean_dgt_fleet.py
 
-Clean DGT vehicle fleet data: extract environmental label shares by province
-from annual Excel workbooks (2019-2024).
+Clean DGT vehicle fleet data at two levels of granularity:
 
-Sheets used:
-    - P_TUR_MEDIO: Turismos (passenger cars) by environmental label
-    - P_MOTO_MEDIO: Motocicletas (motorcycles) by environmental label
-    - V_4_1: All vehicle types by province and fuel type
+1. MUNICIPAL level (primary): Environmental label shares from
+   DatosMunicipalesGeneral_{year}.xlsx files (2017-2024).
+   These contain per-municipality counts by label (B, C, ECO, 0, Sin Distintivo).
+
+2. PROVINCE level (supplementary): Turismos/motocicletas label breakdown and
+   fuel type shares from annual parque_vehiculos_{year}.xlsx workbooks (2019-2024).
 
 Output:
-    data/interim/dgt_fleet_labels_province.csv
-    data/interim/dgt_fleet_fuel_province.csv
+    data/interim/dgt_fleet_labels_municipal.csv   (primary — municipality × year panel)
+    data/interim/dgt_fleet_labels_province.csv    (supplementary — province × year × vehicle type)
+    data/interim/dgt_fleet_fuel_province.csv      (supplementary — province × year fuel breakdown)
 
 Usage:
     python spain-zbe/src/clean/04_clean_dgt_fleet.py
 """
 
 import os
-import re
 import pandas as pd
 
 RAW_DIR = os.path.join("spain-zbe", "data", "raw", "dgt_fleet")
 INTERIM_DIR = os.path.join("spain-zbe", "data", "interim")
 os.makedirs(INTERIM_DIR, exist_ok=True)
 
-YEARS = range(2019, 2025)
-
-# Standard DGT environmental labels
-LABEL_COLS = ["CERO", "B", "C", "ECO", "Sin distintivo"]
+PROVINCE_YEARS = range(2019, 2025)
+MUNICIPAL_YEARS = range(2017, 2025)
 
 # Map province names (as they appear in DGT Excel) to INE 2-digit codes
 # DGT uses slightly different names/accents across years
@@ -95,11 +94,8 @@ def normalize_province_name(name):
     if not isinstance(name, str):
         return ""
     name = name.strip().lower()
-    # Remove newlines that appear in some Excel cells
     name = name.replace("\n", " ").replace("\r", "")
-    # Remove leading/trailing whitespace again
-    name = name.strip()
-    return name
+    return name.strip()
 
 
 def province_name_to_code(name):
@@ -107,30 +103,109 @@ def province_name_to_code(name):
     norm = normalize_province_name(name)
     if norm in PROVINCE_NAME_TO_CODE:
         return PROVINCE_NAME_TO_CODE[norm]
-    # Try partial matching for truncated names
     for key, code in PROVINCE_NAME_TO_CODE.items():
         if norm.startswith(key) or key.startswith(norm):
             return code
     return None
 
 
-def parse_label_sheet(filepath, sheet_name, year):
-    """
-    Parse a P_TUR_MEDIO or P_MOTO_MEDIO sheet.
+# =========================================================================
+# MUNICIPAL-LEVEL: DatosMunicipalesGeneral_{year}.xlsx
+# =========================================================================
 
-    Returns a DataFrame with columns:
-        cod_provincia, year, vehicle_type, CERO, B, C, ECO, sin_distintivo, total
+def parse_municipal_labels(filepath, year):
     """
-    wb = pd.ExcelFile(filepath, engine="openpyxl")
-    if sheet_name not in wb.sheet_names:
-        print(f"  Warning: sheet {sheet_name} not found in {filepath}")
+    Parse DatosMunicipalesGeneral_{year}.xlsx for environmental label data.
+
+    Columns (consistent across 2017-2024):
+        A: Código INE (5-digit municipal code)
+        B: Municipio
+        C: Provincia
+        D: Comunidad Autónoma
+        ...
+        AZ (col 51): Distintivo B
+        BA (col 52): Distintivo C
+        BB (col 53): Distintivo ECO
+        BC (col 54): Distintivo 0
+        BD (col 55): Sin Distintivo
+    """
+    df = pd.read_excel(filepath, engine="openpyxl")
+
+    # Find the label columns by header name
+    col_map = {}
+    for col in df.columns:
+        col_str = str(col).strip()
+        if col_str == "Distintivo B":
+            col_map["b"] = col
+        elif col_str == "Distintivo C":
+            col_map["c"] = col
+        elif col_str == "Distintivo ECO":
+            col_map["eco"] = col
+        elif col_str == "Distintivo 0":
+            col_map["cero"] = col
+        elif col_str == "Sin Distintivo":
+            col_map["sin_distintivo"] = col
+
+    if len(col_map) < 5:
+        print(f"    Warning: only found {len(col_map)}/5 label columns in {filepath}")
         return pd.DataFrame()
 
-    # Read all data, skip the title row and blank row
+    # Get INE code column (first column, named "Código INE")
+    ine_col = df.columns[0]
+    name_col = df.columns[1]
+
+    records = []
+    for _, row in df.iterrows():
+        cod_ine = str(row[ine_col]).strip()
+        # Skip non-numeric or empty codes
+        if not cod_ine or not cod_ine.replace(" ", "").isdigit():
+            continue
+        # Zero-pad to 5 digits
+        cod_ine = cod_ine.zfill(5)
+        # Skip "unspecified" municipality codes ending in 000
+        if cod_ine.endswith("000"):
+            continue
+
+        muni_name = str(row[name_col]).strip() if pd.notna(row[name_col]) else ""
+
+        label_vals = {}
+        for label, col in col_map.items():
+            v = row[col]
+            label_vals[label] = int(v) if pd.notna(v) else 0
+
+        total = sum(label_vals.values())
+        records.append({
+            "cod_ine": cod_ine,
+            "cod_provincia": cod_ine[:2],
+            "municipio": muni_name,
+            "year": year,
+            **label_vals,
+            "total": total,
+        })
+
+    return pd.DataFrame(records)
+
+
+def compute_municipal_label_shares(df):
+    """Add share columns for each environmental label at municipal level."""
+    for col in ["cero", "b", "c", "eco", "sin_distintivo"]:
+        df[f"share_{col}"] = df[col] / df["total"].replace(0, float("nan"))
+    return df
+
+
+# =========================================================================
+# PROVINCE-LEVEL: parque_vehiculos_{year}.xlsx
+# =========================================================================
+
+def parse_label_sheet(filepath, sheet_name, year):
+    """Parse a P_TUR_MEDIO or P_MOTO_MEDIO sheet (province-level)."""
+    wb = pd.ExcelFile(filepath, engine="openpyxl")
+    if sheet_name not in wb.sheet_names:
+        return pd.DataFrame()
+
     df = pd.read_excel(filepath, sheet_name=sheet_name, header=None,
                        engine="openpyxl")
 
-    # Find the header row (contains "CERO" or "Provincias")
     header_idx = None
     for i, row in df.iterrows():
         vals = [str(v).strip().upper().replace("\n", " ") for v in row if pd.notna(v)]
@@ -139,20 +214,15 @@ def parse_label_sheet(filepath, sheet_name, year):
             break
 
     if header_idx is None:
-        print(f"  Warning: could not find header in {sheet_name} for {year}")
         return pd.DataFrame()
 
-    # Use the row after header as start of data
     data_start = header_idx + 1
-
-    # Parse data rows
     records = []
     for i in range(data_start, len(df)):
         row = df.iloc[i]
         prov_name = row.iloc[0]
         if not isinstance(prov_name, str) or prov_name.strip() == "":
             continue
-        # Skip total/summary rows
         norm = normalize_province_name(prov_name)
         if norm in ("total", "totales", "total nacional", ""):
             continue
@@ -161,13 +231,11 @@ def parse_label_sheet(filepath, sheet_name, year):
         if code is None:
             continue
 
-        # Extract label counts (columns 1-5, possibly 6 for "Se desconoce")
         vals = []
         for j in range(1, 6):
             v = row.iloc[j] if j < len(row) else 0
             vals.append(int(v) if pd.notna(v) and v != "" else 0)
 
-        # Check for "Se desconoce" column
         se_desconoce = 0
         if len(row) > 6 and pd.notna(row.iloc[6]):
             try:
@@ -195,21 +263,15 @@ def parse_label_sheet(filepath, sheet_name, year):
 
 
 def parse_fuel_sheet(filepath, year):
-    """
-    Parse V_4_1 sheet (vehicle types by province and fuel).
-
-    Returns a DataFrame with province-level fuel breakdown for turismos.
-    """
+    """Parse V_4_1 sheet (vehicle types by province and fuel)."""
     sheet_name = "V_4_1"
     wb = pd.ExcelFile(filepath, engine="openpyxl")
     if sheet_name not in wb.sheet_names:
-        print(f"  Warning: sheet {sheet_name} not found in {filepath}")
         return pd.DataFrame()
 
     df = pd.read_excel(filepath, sheet_name=sheet_name, header=None,
                        engine="openpyxl")
 
-    # Find header row
     header_idx = None
     for i, row in df.iterrows():
         vals = [str(v).strip().upper().replace("\n", " ") for v in row if pd.notna(v)]
@@ -218,11 +280,9 @@ def parse_fuel_sheet(filepath, year):
             break
 
     if header_idx is None:
-        print(f"  Warning: could not find header in {sheet_name} for {year}")
         return pd.DataFrame()
 
     data_start = header_idx + 1
-
     records = []
     for i in range(data_start, len(df)):
         row = df.iloc[i]
@@ -237,17 +297,11 @@ def parse_fuel_sheet(filepath, year):
         if code is None:
             continue
 
-        # Turismos columns: Gasolina (idx 12), Gasoil (13), Otros (14), Total (15)
-        # Column positions vary by year but turismos are always after autobuses
-        # We look for the pattern: province, then blocks of 4 cols per vehicle type
-        # Camiones(4) + Furgonetas(4) + Autobuses(4) + Turismos(4) + ...
-        # So turismos start at column 13 (0-indexed)
         try:
             tur_gasolina = int(row.iloc[13]) if pd.notna(row.iloc[13]) else 0
             tur_gasoil = int(row.iloc[14]) if pd.notna(row.iloc[14]) else 0
             tur_otros = int(row.iloc[15]) if pd.notna(row.iloc[15]) else 0
             tur_total = int(row.iloc[16]) if pd.notna(row.iloc[16]) else 0
-            # Totals for all vehicle types
             total_gasolina = int(row.iloc[29]) if pd.notna(row.iloc[29]) else 0
             total_gasoil = int(row.iloc[30]) if pd.notna(row.iloc[30]) else 0
             total_otros = int(row.iloc[31]) if pd.notna(row.iloc[31]) else 0
@@ -271,11 +325,8 @@ def parse_fuel_sheet(filepath, year):
     return pd.DataFrame(records)
 
 
-def compute_label_shares(df):
-    """Add share columns for each environmental label.
-
-    Denominator excludes 'se_desconoce' so shares of known labels sum to 1.0.
-    """
+def compute_province_label_shares(df):
+    """Add share columns (denominator excludes se_desconoce)."""
     known_total = df["total"] - df["se_desconoce"]
     for col in ["cero", "b", "c", "eco", "sin_distintivo"]:
         df[f"share_{col}"] = df[col] / known_total.replace(0, float("nan"))
@@ -290,62 +341,89 @@ def compute_fuel_shares(df):
     return df
 
 
+# =========================================================================
+# MAIN
+# =========================================================================
+
 def main():
     print("=" * 70)
     print("DGT Fleet Data — Clean Environmental Labels & Fuel Types")
     print("=" * 70)
 
-    # ---- Environmental label data ----
-    all_labels = []
-    for year in YEARS:
-        filepath = os.path.join(RAW_DIR, f"parque_vehiculos_{year}.xlsx")
+    # ==== 1. MUNICIPAL-LEVEL LABELS (primary) ====
+    print("\n--- Municipal-level environmental labels (2017-2024) ---\n")
+    all_municipal = []
+    for year in MUNICIPAL_YEARS:
+        filepath = os.path.join(RAW_DIR, f"DatosMunicipalesGeneral_{year}.xlsx")
         if not os.path.exists(filepath):
             print(f"  {year}: file not found, skipping")
             continue
 
-        print(f"  {year}: parsing environmental labels...")
-        for sheet in ["P_TUR_MEDIO", "P_MOTO_MEDIO"]:
-            df = parse_label_sheet(filepath, sheet, year)
-            if len(df) > 0:
-                all_labels.append(df)
-                print(f"    {sheet}: {len(df)} provinces")
+        print(f"  {year}: parsing...", end=" ")
+        df = parse_municipal_labels(filepath, year)
+        if len(df) > 0:
+            all_municipal.append(df)
+            print(f"{len(df)} municipalities")
+        else:
+            print("no data")
 
-    if all_labels:
-        labels_df = pd.concat(all_labels, ignore_index=True)
-        labels_df = compute_label_shares(labels_df)
-        labels_df = labels_df.sort_values(["year", "vehicle_type", "cod_provincia"])
+    if all_municipal:
+        muni_df = pd.concat(all_municipal, ignore_index=True)
+        muni_df = compute_municipal_label_shares(muni_df)
+        muni_df = muni_df.sort_values(["year", "cod_ine"]).reset_index(drop=True)
 
-        output_path = os.path.join(INTERIM_DIR, "dgt_fleet_labels_province.csv")
-        labels_df.to_csv(output_path, index=False)
-        print(f"\n  Saved environmental labels: {output_path}")
-        print(f"    {len(labels_df)} rows, {labels_df['year'].nunique()} years, "
-              f"{labels_df['cod_provincia'].nunique()} provinces")
-        print(f"    Vehicle types: {labels_df['vehicle_type'].unique().tolist()}")
+        output_path = os.path.join(INTERIM_DIR, "dgt_fleet_labels_municipal.csv")
+        muni_df.to_csv(output_path, index=False)
+        print(f"\n  Saved: {output_path}")
+        print(f"    {len(muni_df)} rows, {muni_df['year'].nunique()} years, "
+              f"{muni_df['cod_ine'].nunique()} municipalities")
 
-        # Summary statistics
-        latest = labels_df[labels_df["year"] == labels_df["year"].max()]
-        for vtype in latest["vehicle_type"].unique():
-            sub = latest[latest["vehicle_type"] == vtype]
-            print(f"\n    {vtype} ({sub['year'].iloc[0]}) — national averages:")
-            total = sub[["cero", "b", "c", "eco", "sin_distintivo"]].sum()
-            grand = total.sum()
-            for col in ["cero", "b", "c", "eco", "sin_distintivo"]:
-                print(f"      {col:>15s}: {total[col]:>10,.0f} ({total[col]/grand:.1%})")
+        # Summary: municipalities near the 50k threshold
+        latest = muni_df[muni_df["year"] == muni_df["year"].max()]
+        above_50k = latest[latest["total"] > 5000]  # rough proxy
+        print(f"    Municipalities with >5000 labeled vehicles ({latest['year'].iloc[0]}): "
+              f"{len(above_50k)}")
+        print(f"\n    National totals ({latest['year'].iloc[0]}):")
+        for col in ["cero", "b", "c", "eco", "sin_distintivo"]:
+            total = latest[col].sum()
+            grand = latest["total"].sum()
+            print(f"      {col:>15s}: {total:>12,.0f} ({total/grand:.1%})")
     else:
-        print("\n  No environmental label data found!")
+        print("\n  No municipal-level data found!")
 
-    # ---- Fuel type data ----
-    all_fuel = []
-    for year in YEARS:
+    # ==== 2. PROVINCE-LEVEL LABELS (supplementary) ====
+    print("\n--- Province-level environmental labels by vehicle type (2019-2024) ---\n")
+    all_labels = []
+    for year in PROVINCE_YEARS:
         filepath = os.path.join(RAW_DIR, f"parque_vehiculos_{year}.xlsx")
         if not os.path.exists(filepath):
             continue
 
-        print(f"\n  {year}: parsing fuel types...")
+        for sheet in ["P_TUR_MEDIO", "P_MOTO_MEDIO"]:
+            df = parse_label_sheet(filepath, sheet, year)
+            if len(df) > 0:
+                all_labels.append(df)
+
+    if all_labels:
+        labels_df = pd.concat(all_labels, ignore_index=True)
+        labels_df = compute_province_label_shares(labels_df)
+        labels_df = labels_df.sort_values(["year", "vehicle_type", "cod_provincia"])
+
+        output_path = os.path.join(INTERIM_DIR, "dgt_fleet_labels_province.csv")
+        labels_df.to_csv(output_path, index=False)
+        print(f"  Saved: {output_path} ({len(labels_df)} rows)")
+
+    # ==== 3. PROVINCE-LEVEL FUEL (supplementary) ====
+    print("\n--- Province-level fuel types (2019-2024) ---\n")
+    all_fuel = []
+    for year in PROVINCE_YEARS:
+        filepath = os.path.join(RAW_DIR, f"parque_vehiculos_{year}.xlsx")
+        if not os.path.exists(filepath):
+            continue
+
         df = parse_fuel_sheet(filepath, year)
         if len(df) > 0:
             all_fuel.append(df)
-            print(f"    V_4_1: {len(df)} provinces")
 
     if all_fuel:
         fuel_df = pd.concat(all_fuel, ignore_index=True)
@@ -354,8 +432,7 @@ def main():
 
         output_path = os.path.join(INTERIM_DIR, "dgt_fleet_fuel_province.csv")
         fuel_df.to_csv(output_path, index=False)
-        print(f"\n  Saved fuel types: {output_path}")
-        print(f"    {len(fuel_df)} rows, {fuel_df['year'].nunique()} years")
+        print(f"  Saved: {output_path} ({len(fuel_df)} rows)")
 
     print("\n" + "=" * 70)
     print("Done.")
