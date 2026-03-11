@@ -55,18 +55,40 @@ DGT_CIFRAS = f"{DGT_BASE}/menusecundario/dgt-en-cifras/"
 
 # Known URLs for annual fleet statistical tables
 # These are Excel workbooks published by the DGT
-# NB: The exact URL path changes slightly each year — verify before running
+#
+# IMPORTANT: The DGT uses inconsistent URL patterns across years:
+#   - Detail page slug: "Tablas-Estadisticas" (capital E) for 2023 only;
+#     all other years use "Tablas-estadisticas" (lowercase e).
+#   - Excel download path: the parent folder and filename pattern vary:
+#     2019-2020: .../parque-de-vehiculos/Parque-de-vehiculos-Tabla-Estadistica-{year}.xlsx
+#     2021:      .../parque-de-vehiculos/Parque-de-vehiculos-Tablas-estadisticas2021.xlsx  (no hyphen before year!)
+#     2022:      .../parque-de-vehiculos/Parque-de-vehiculos-Tablas-estadisticas-2022.xlsx
+#     2023-2024: .../Parque-de-vehiculos-Tablas-Estadisticas/Parque-de-vehiculos-Tablas-estadisticas-{year}.xlsx
+#
+# All URLs verified 2026-03-11.
+
+_DETAIL_BASE = ("https://www.dgt.es/menusecundario/dgt-en-cifras/"
+                "dgt-en-cifras-resultados/dgt-en-cifras-detalle/")
+
 FLEET_TABLE_URLS = {
-    2024: "https://www.dgt.es/menusecundario/dgt-en-cifras/dgt-en-cifras-resultados/"
-          "dgt-en-cifras-detalle/Parque-de-vehiculos-Tablas-estadisticas-2024/",
-    2023: "https://www.dgt.es/menusecundario/dgt-en-cifras/dgt-en-cifras-resultados/"
-          "dgt-en-cifras-detalle/Parque-de-vehiculos-Tablas-Estadisticas-2023/",
-    2022: "https://www.dgt.es/menusecundario/dgt-en-cifras/dgt-en-cifras-resultados/"
-          "dgt-en-cifras-detalle/Parque-de-vehiculos-Tablas-Estadisticas-2022/",
-    2021: "https://www.dgt.es/menusecundario/dgt-en-cifras/dgt-en-cifras-resultados/"
-          "dgt-en-cifras-detalle/Parque-de-vehiculos-Tablas-Estadisticas-2021/",
-    2020: "https://www.dgt.es/menusecundario/dgt-en-cifras/dgt-en-cifras-resultados/"
-          "dgt-en-cifras-detalle/Parque-de-vehiculos-Tablas-Estadisticas-2020/",
+    2024: _DETAIL_BASE + "Parque-de-vehiculos-Tablas-estadisticas-2024/",
+    2023: _DETAIL_BASE + "Parque-de-vehiculos-Tablas-Estadisticas-2023/",
+    2022: _DETAIL_BASE + "Parque-de-vehiculos-Tablas-estadisticas-2022/",
+    2021: _DETAIL_BASE + "Parque-de-vehiculos-Tablas-estadisticas-2021/",
+    2020: _DETAIL_BASE + "Parque-de-vehiculos-Tablas-estadisticas-2020/",
+    2019: _DETAIL_BASE + "Parque-de-vehiculos-Tablas-estadisticas-2019/",
+}
+
+_EXCEL_BASE = ("https://www.dgt.es/export/sites/web-DGT/.galleries/downloads/"
+               "dgt-en-cifras/publicaciones/")
+
+FLEET_EXCEL_URLS = {
+    2024: _EXCEL_BASE + "Parque-de-vehiculos-Tablas-Estadisticas/Parque-de-vehiculos-Tablas-estadisticas-2024.xlsx",
+    2023: _EXCEL_BASE + "Parque-de-vehiculos-Tablas-Estadisticas/Parque-de-vehiculos-Tablas-estadisticas-2023.xlsx",
+    2022: _EXCEL_BASE + "parque-de-vehiculos/Parque-de-vehiculos-Tablas-estadisticas-2022.xlsx",
+    2021: _EXCEL_BASE + "parque-de-vehiculos/Parque-de-vehiculos-Tablas-estadisticas2021.xlsx",
+    2020: _EXCEL_BASE + "parque-de-vehiculos/Parque-de-vehiculos-Tabla-Estadistica-2020.xlsx",
+    2019: _EXCEL_BASE + "parque-de-vehiculos/Parque-de-vehiculos-Tabla-Estadistica-2019.xlsx",
 }
 
 # Old statistical portal — PC-Axis tables by municipality
@@ -133,15 +155,35 @@ def find_excel_download_link(page_url: str) -> str | None:
 def download_fleet_excel(year: int) -> str | None:
     """
     Download the annual fleet statistics Excel workbook for a given year.
-    """
-    if year not in FLEET_TABLE_URLS:
-        print(f"  No known URL for year {year}")
-        return None
 
-    page_url = FLEET_TABLE_URLS[year]
-    excel_url = find_excel_download_link(page_url)
+    Uses the known direct Excel URL first (FLEET_EXCEL_URLS), falling back
+    to scraping the detail page if the direct URL is unavailable.
+    """
+    # Strategy 1: Use known direct Excel URL
+    excel_url = FLEET_EXCEL_URLS.get(year)
+    if excel_url:
+        print(f"  Trying direct Excel URL for {year}...")
+        try:
+            resp = SESSION.head(excel_url, timeout=15, allow_redirects=True)
+            if resp.status_code == 200:
+                print(f"  Direct URL OK: {excel_url}")
+            else:
+                print(f"  Direct URL returned {resp.status_code}, falling back to scraping...")
+                excel_url = None
+        except requests.exceptions.RequestException:
+            print(f"  Direct URL unreachable, falling back to scraping...")
+            excel_url = None
+
+    # Strategy 2: Scrape the detail page for the download link
+    if not excel_url:
+        if year not in FLEET_TABLE_URLS:
+            print(f"  No known URL for year {year}")
+            return None
+        page_url = FLEET_TABLE_URLS[year]
+        excel_url = find_excel_download_link(page_url)
 
     if not excel_url:
+        page_url = FLEET_TABLE_URLS.get(year, "(unknown)")
         print(f"  Could not find Excel link for {year}.")
         print(f"  Try downloading manually from: {page_url}")
         return None
