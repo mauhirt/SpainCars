@@ -45,6 +45,7 @@ PROVINCE_NAME_TO_CODE = {
     "cáceres": "10", "caceres": "10",
     "cádiz": "11", "cadiz": "11",
     "castellón/castelló": "12", "castellón": "12", "castelló": "12",
+    "castellon/castello": "12", "castellon": "12", "castello": "12",
     "ciudad real": "13",
     "córdoba": "14", "cordoba": "14",
     "coruña (a)": "15", "a coruña": "15", "coruña, a": "15",
@@ -271,9 +272,13 @@ def parse_fuel_sheet(filepath, year):
 
 
 def compute_label_shares(df):
-    """Add share columns for each environmental label."""
+    """Add share columns for each environmental label.
+
+    Denominator excludes 'se_desconoce' so shares of known labels sum to 1.0.
+    """
+    known_total = df["total"] - df["se_desconoce"]
     for col in ["cero", "b", "c", "eco", "sin_distintivo"]:
-        df[f"share_{col}"] = df[col] / df["total"].replace(0, float("nan"))
+        df[f"share_{col}"] = df[col] / known_total.replace(0, float("nan"))
     return df
 
 

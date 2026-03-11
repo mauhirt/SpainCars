@@ -48,7 +48,9 @@ PARTY_PATTERNS = {
     "PSOE": r"^PSOE|^P\.S\.O\.E|^PSdeG-PSOE|^PSC-PSOE|^PSE-EE",
     "VOX": r"^VOX$",
     "Cs": r"^C'[sS]$|^Cs$|^CIUDADANOS",
-    "UP": r"^PODEMOS|^UNIDAS PODEMOS|^EN COM[UÚ]",
+    "UP": (r"^PODEMOS|^UNIDAS PODEMOS|^EN COM[UÚ] PODEM|^BARCELONA EN COM"
+           r"|^AhoraMadrid$|^AHORA MADRID|^M[ÁA]S MADRID|^MasMadrid"
+           r"|^M[ÁA]S PA[ÍI]S"),
 }
 
 
@@ -286,23 +288,32 @@ def process_election_year(year, files):
     # 5. Build INE code
     totals["cod_ine"] = totals["cod_provincia"] + totals["cod_municipio"]
 
-    # 6. Compute total valid votes per municipality
+    # 6. Compute total valid votes per municipality (all candidacies, not just tracked)
     muni_total_votes = totals.groupby("cod_ine")["votes"].sum().rename("total_votes")
 
-    # 7. Pivot: one row per municipality, columns for each party's votes
-    party_votes = totals[totals["party"].notna()].groupby(
-        ["cod_ine", "party"]
-    )["votes"].sum().unstack(fill_value=0)
-    party_votes.columns = [f"votos_{c.lower()}" for c in party_votes.columns]
+    # 7. Get full list of municipalities (so we don't drop any)
+    all_munis = muni_total_votes.index
 
-    # Also get seats
-    party_seats = totals[totals["party"].notna()].groupby(
-        ["cod_ine", "party"]
-    )["seats"].sum().unstack(fill_value=0)
-    party_seats.columns = [f"seats_{c.lower()}" for c in party_seats.columns]
+    # 8. Pivot: one row per municipality, columns for each party's votes
+    tracked = totals[totals["party"].notna()]
+    if len(tracked) > 0:
+        party_votes = tracked.groupby(
+            ["cod_ine", "party"]
+        )["votes"].sum().unstack(fill_value=0)
+        party_votes.columns = [f"votos_{c.lower()}" for c in party_votes.columns]
 
-    # 8. Merge
-    muni_df = party_votes.join(party_seats).join(muni_total_votes)
+        party_seats = tracked.groupby(
+            ["cod_ine", "party"]
+        )["seats"].sum().unstack(fill_value=0)
+        party_seats.columns = [f"seats_{c.lower()}" for c in party_seats.columns]
+    else:
+        party_votes = pd.DataFrame(index=all_munis)
+        party_seats = pd.DataFrame(index=all_munis)
+
+    # 9. Merge — use reindex to keep ALL municipalities (fill zeros for missing parties)
+    muni_df = party_votes.reindex(all_munis, fill_value=0).join(
+        party_seats.reindex(all_munis, fill_value=0)
+    ).join(muni_total_votes)
     muni_df["year"] = year
 
     # Compute vote shares
