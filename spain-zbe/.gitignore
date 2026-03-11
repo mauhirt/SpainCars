@@ -1,0 +1,42 @@
+# Data (too large for git; document sources in README)
+data/raw/
+data/interim/
+data/processed/
+
+# Keep directory structure
+!data/raw/.gitkeep
+!data/interim/.gitkeep
+!data/processed/.gitkeep
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# R
+.Rhistory
+.RData
+.Rproj.user/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Output (regenerable)
+output/figures/*.png
+output/figures/*.pdf
+output/tables/*.tex
+output/tables/*.csv
+
+# LaTeX
+paper/*.aux
+paper/*.log
+paper/*.bbl
+paper/*.blg
+paper/*.synctex.gz
