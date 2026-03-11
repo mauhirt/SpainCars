@@ -104,6 +104,50 @@ SEA_FILES = {
     },
 }
 
+# -------------------------------------------------------------------------
+# Source 3: JaimeObregon/infoelectoral GitHub mirror
+# -------------------------------------------------------------------------
+# Pre-extracted Ministry DAT files covering ALL municipalities (not just
+# large ones like SEA). Available for 2015 and 2019 only (repo stops there).
+# These are the raw fixed-width ASCII files that need parsing.
+# URL: https://github.com/JaimeObregon/infoelectoral
+
+_GH_BASE = ("https://raw.githubusercontent.com/JaimeObregon/"
+            "infoelectoral/main/files/municipales")
+
+GITHUB_FILES = {
+    "gh_municipal_2015_results": {
+        "url": f"{_GH_BASE}/04201505_MUNI/04041505.DAT",
+        "desc": "GitHub 2015 — results by municipality+candidacy (all municipalities)",
+        "filename": "gh_2015_04_results_muni.DAT",
+    },
+    "gh_municipal_2015_candidacies": {
+        "url": f"{_GH_BASE}/04201505_MUNI/03041505.DAT",
+        "desc": "GitHub 2015 — candidacy codes",
+        "filename": "gh_2015_03_candidacies.DAT",
+    },
+    "gh_municipal_2015_summary": {
+        "url": f"{_GH_BASE}/04201505_MUNI/05041505.DAT",
+        "desc": "GitHub 2015 — summary by municipality",
+        "filename": "gh_2015_05_summary_muni.DAT",
+    },
+    "gh_municipal_2019_results": {
+        "url": f"{_GH_BASE}/04201905_MUNI/04041905.DAT",
+        "desc": "GitHub 2019 — results by municipality+candidacy (all municipalities)",
+        "filename": "gh_2019_04_results_muni.DAT",
+    },
+    "gh_municipal_2019_candidacies": {
+        "url": f"{_GH_BASE}/04201905_MUNI/03041905.DAT",
+        "desc": "GitHub 2019 — candidacy codes",
+        "filename": "gh_2019_03_candidacies.DAT",
+    },
+    "gh_municipal_2019_summary": {
+        "url": f"{_GH_BASE}/04201905_MUNI/05041905.DAT",
+        "desc": "GitHub 2019 — summary by municipality",
+        "filename": "gh_2019_05_summary_muni.DAT",
+    },
+}
+
 SESSION = requests.Session()
 SESSION.headers.update({
     "User-Agent": "Mozilla/5.0 (research project; university of oxford)",
@@ -221,6 +265,31 @@ def download_sea_elections() -> dict:
     return downloaded
 
 
+def download_github_elections() -> dict:
+    """
+    Download pre-extracted Ministry DAT files from JaimeObregon's GitHub mirror.
+    Covers ALL municipalities for 2015 and 2019 (2023 not available).
+    """
+    downloaded = {}
+
+    for key, info in GITHUB_FILES.items():
+        url = info["url"]
+        desc = info["desc"]
+        filename = info["filename"]
+        output_path = os.path.join(RAW_DIR, filename)
+
+        if os.path.exists(output_path):
+            print(f"  {desc}: already downloaded")
+            downloaded[key] = output_path
+            continue
+
+        print(f"  {desc}:")
+        if download_with_retry(url, output_path, desc):
+            downloaded[key] = output_path
+
+    return downloaded
+
+
 def print_parsing_notes():
     """Print notes on parsing the election data files."""
     notes = """
@@ -280,7 +349,11 @@ if __name__ == "__main__":
     else:
         sea_downloaded = {}
 
-    # Step 3: Summary
+    # Step 3: GitHub mirror for full-coverage 2015+2019 DAT files
+    print("\n--- Source 3: GitHub Mirror (all municipalities, 2015+2019) ---\n")
+    gh_downloaded = download_github_elections()
+
+    # Step 4: Summary
     print()
     print_parsing_notes()
 
@@ -288,21 +361,26 @@ if __name__ == "__main__":
     print("Summary:")
     print(f"  Ministry of Interior: {len(mir_downloaded)}/{len(ELECTIONS)} elections")
     print(f"  SEA Database: {len(sea_downloaded)}/{len(SEA_FILES)} files")
+    print(f"  GitHub Mirror: {len(gh_downloaded)}/{len(GITHUB_FILES)} files")
     if mir_downloaded:
         print(f"  Ministry files: {list(mir_downloaded.keys())}")
     if sea_downloaded:
         print(f"  SEA files: {list(sea_downloaded.keys())}")
+    if gh_downloaded:
+        print(f"  GitHub files: {list(gh_downloaded.keys())}")
     print()
     print("Next steps:")
     if mir_downloaded:
         print("  1. Parse Ministry ZIP files (use R + infoelectoral, or manual Python)")
     if sea_downloaded:
         print("  2. Extract and inspect SEA RAR files for pre-parsed Excel data")
-    if not mir_downloaded and not sea_downloaded:
-        print("  1. Both sources failed. Try again later or download manually:")
+    if gh_downloaded:
+        print("  3. Parse GitHub DAT files (fixed-width, covers all municipalities)")
+    if not mir_downloaded and not sea_downloaded and not gh_downloaded:
+        print("  1. All sources failed. Try again later or download manually:")
         print("     Ministry: https://infoelectoral.interior.gob.es/")
         print("     SEA: https://doi.org/10.7910/DVN/53FCE6")
-    print("  3. Compute Vox and PP vote shares by municipality")
-    print("  4. Note: Vox did not run in 2015 municipal elections")
-    print("  5. Run merge script to combine with population panel")
+    print("  4. Compute Vox and PP vote shares by municipality")
+    print("  5. Note: Vox did not run in 2015 municipal elections")
+    print("  6. Run merge script to combine with population panel")
     print("=" * 70)
