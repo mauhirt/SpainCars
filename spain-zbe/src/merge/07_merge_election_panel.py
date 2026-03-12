@@ -9,10 +9,13 @@ available year when exact match is unavailable).
 
 Input:
     data/interim/ine_population_panel.csv
-    data/interim/elections_municipal_panel.csv
+    data/interim/elections_municipal_panel.csv        (2015, 2019 from DAT files)
+    data/interim/elections_municipal_2023.csv          (2023 municipal from Excel)
+    data/interim/elections_congress_2023.csv           (2023 congress from Excel)
 
 Output:
     data/processed/election_panel.csv
+    data/processed/congress_panel.csv
 
 Usage:
     python spain-zbe/src/merge/07_merge_election_panel.py
@@ -40,14 +43,46 @@ def load_population():
 
 
 def load_elections():
-    """Load elections panel with standardised cod_ine."""
-    path = os.path.join(INTERIM_DIR, "elections_municipal_panel.csv")
+    """Load elections panel with standardised cod_ine (2015, 2019 + 2023)."""
+    # Load 2015/2019 from DAT-parsed file
+    path_dat = os.path.join(INTERIM_DIR, "elections_municipal_panel.csv")
+    df_dat = pd.read_csv(path_dat)
+    df_dat["cod_ine"] = df_dat["cod_ine"].astype(str).str.zfill(5)
+    df_dat["cod_provincia"] = df_dat["cod_ine"].str[:2]
+    print(f"  Elections (DAT 2015/2019): {len(df_dat)} rows, "
+          f"years {sorted(df_dat['year'].unique())}")
+
+    # Load 2023 municipal from Excel-parsed file
+    path_2023 = os.path.join(INTERIM_DIR, "elections_municipal_2023.csv")
+    if os.path.exists(path_2023):
+        df_2023 = pd.read_csv(path_2023)
+        df_2023["cod_ine"] = df_2023["cod_ine"].astype(str).str.zfill(5)
+        df_2023["cod_provincia"] = df_2023["cod_ine"].str[:2]
+        print(f"  Elections (Excel 2023 municipal): {len(df_2023)} rows")
+
+        # Harmonise columns: rename to match DAT format
+        # The 2023 Excel doesn't have seats data — that's OK
+        df_2023 = df_2023.rename(columns={})  # no renames needed, schema matches
+        df_dat = pd.concat([df_dat, df_2023], ignore_index=True)
+    else:
+        print(f"  Warning: {path_2023} not found — 2023 municipal data missing")
+
+    print(f"  Combined elections: {len(df_dat)} rows, "
+          f"years {sorted(df_dat['year'].unique())}, "
+          f"{df_dat['cod_ine'].nunique()} municipalities")
+    return df_dat
+
+
+def load_congress():
+    """Load 2023 congress election data."""
+    path = os.path.join(INTERIM_DIR, "elections_congress_2023.csv")
+    if not os.path.exists(path):
+        print(f"  Congress data not found: {path}")
+        return None
     df = pd.read_csv(path)
     df["cod_ine"] = df["cod_ine"].astype(str).str.zfill(5)
     df["cod_provincia"] = df["cod_ine"].str[:2]
-    print(f"  Elections: {len(df)} rows, "
-          f"years {sorted(df['year'].unique())}, "
-          f"{df['cod_ine'].nunique()} municipalities")
+    print(f"  Congress 2023: {len(df)} rows")
     return df
 
 
@@ -146,6 +181,26 @@ def merge_election_panel(pop_df, elections_df):
     return panel
 
 
+def merge_single_year_panel(pop_df, single_year_df, year_label):
+    """Merge population onto a single-year election DataFrame."""
+    pop_years = sorted(pop_df["year"].unique())
+    pop_subset = get_population_for_election(pop_df, single_year_df["year"].iloc[0],
+                                              pop_years)
+    if pop_subset is None:
+        return single_year_df
+
+    pop_merge = pop_subset[["cod_ine", "poblacion", "above_50k",
+                            "pop_distance_50k"]].copy()
+    if "pop_year_used" in pop_subset.columns:
+        pop_merge["pop_year_used"] = pop_subset["pop_year_used"].values
+
+    merged = single_year_df.merge(pop_merge, on="cod_ine", how="left")
+    n_matched = merged["poblacion"].notna().sum()
+    print(f"  {year_label}: {len(merged)} municipalities, "
+          f"population matched: {n_matched} ({n_matched/len(merged):.1%})")
+    return merged
+
+
 def main():
     print("=" * 70)
     print("Stage 3b: Merge Election Panel (Municipality-Election)")
@@ -190,6 +245,31 @@ def main():
     print(f"\n  Saved: {output_path}")
     print(f"    {len(panel)} rows × {len(panel.columns)} columns")
     print(f"    Columns: {panel.columns.tolist()}")
+
+    # ---------------------------------------------------------------
+    # Congress panel (robustness)
+    # ---------------------------------------------------------------
+    congress_df = load_congress()
+    if congress_df is not None:
+        print("\n  --- Congress Panel ---")
+        congress_panel = merge_single_year_panel(pop_df, congress_df,
+                                                  "Congress 2023")
+
+        # Reorder columns
+        id_cols = ["cod_ine", "cod_provincia", "municipio", "year"]
+        pop_cols = ["poblacion", "above_50k", "pop_distance_50k"]
+        if "pop_year_used" in congress_panel.columns:
+            pop_cols.append("pop_year_used")
+        remaining = [c for c in congress_panel.columns
+                     if c not in id_cols and c not in pop_cols]
+        ordered = [c for c in id_cols + pop_cols + remaining
+                   if c in congress_panel.columns]
+        congress_panel = congress_panel[ordered]
+
+        cong_path = os.path.join(PROCESSED_DIR, "congress_panel.csv")
+        congress_panel.to_csv(cong_path, index=False)
+        print(f"  Saved: {cong_path}")
+        print(f"    {len(congress_panel)} rows × {len(congress_panel.columns)} columns")
 
     print("\n" + "=" * 70)
     print("Done.")

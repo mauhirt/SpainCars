@@ -62,7 +62,14 @@ def load_panels():
                         dtype={"cod_ine": str, "cod_provincia": str})
     election = pd.read_csv(os.path.join(DATA_DIR, "election_panel.csv"),
                            dtype={"cod_ine": str, "cod_provincia": str})
-    return fleet, election
+
+    congress_path = os.path.join(DATA_DIR, "congress_panel.csv")
+    congress = None
+    if os.path.exists(congress_path):
+        congress = pd.read_csv(congress_path,
+                               dtype={"cod_ine": str, "cod_provincia": str})
+
+    return fleet, election, congress
 
 
 def run_rd(data, outcome, bandwidth=BW_DEFAULT, controls=None,
@@ -414,26 +421,21 @@ def rdrobust_estimation(fleet):
 # ===================================================================
 def election_rd(election):
     """
-    RD on voting outcomes. Requires 2023 election data for
-    post-treatment analysis.
+    RD on voting outcomes across 2015, 2019, and 2023 municipal elections.
 
-    If only 2015 and 2019 are available, reports pre-treatment
-    balance at the threshold (should show no discontinuity).
+    2015 & 2019: pre-treatment placebo (should show no discontinuity)
+    2023: post-treatment (test for ZBE backlash effect on Vox)
     """
     print("\n" + "=" * 60)
-    print("ELECTION RD")
+    print("ELECTION RD — MUNICIPAL")
     print("=" * 60)
 
     years = sorted(election["year"].unique())
     has_post = 2023 in years
 
-    if not has_post:
-        print(f"\n  Available years: {years}")
-        print("  No post-mandate (2023) election data available.")
-        print("  Reporting pre-treatment balance only.\n")
-
     vote_outcomes = ["share_vox", "share_pp", "share_psoe"]
 
+    all_results = []
     for yr in years:
         yr_data = election[election["year"] == yr].copy()
         print(f"\n  --- {yr} Municipal Election ---")
@@ -445,11 +447,16 @@ def election_rd(election):
                          province_fe=True, cluster_var="cod_ine")
             if res:
                 label = "POST-TREATMENT" if yr >= 2023 else "pre-treatment"
+                res["year"] = yr
+                res["outcome"] = outcome
+                res["election_type"] = "municipal"
+                res["label"] = label
+                all_results.append(res)
                 print(f"    {outcome:15s} ({label}):  coef={res['coef']:+.5f}  "
                       f"SE={res['se']:.5f}  p={res['pval']:.3f}{star(res['pval'])}  "
                       f"N={res['n']}")
 
-    # If we have 2023, do DiD: 2019 vs 2023
+    # Diff-in-Disc: 2019 vs 2023
     if has_post:
         print("\n  --- Diff-in-Disc: 2019 vs 2023 ---")
         did_data = election[election["year"].isin([2019, 2023])].copy()
@@ -485,10 +492,144 @@ def election_rd(election):
                 coef = model.params["treat_x_post"]
                 se = model.bse["treat_x_post"]
                 pval = model.pvalues["treat_x_post"]
+                ci = model.conf_int().loc["treat_x_post"]
                 print(f"    {outcome:15s}  DiD-RD coef={coef:+.5f}  "
                       f"SE={se:.5f}  p={pval:.3f}{star(pval)}")
+                all_results.append({
+                    "year": "2019v2023",
+                    "outcome": outcome,
+                    "election_type": "municipal_did",
+                    "label": "Diff-in-Disc",
+                    "coef": coef,
+                    "se": se,
+                    "pval": pval,
+                    "ci_low": ci[0],
+                    "ci_high": ci[1],
+                    "n": len(did_data_clean),
+                })
             except Exception as e:
                 print(f"    {outcome}: error — {e}")
+
+    return all_results
+
+
+def congress_rd(congress):
+    """
+    RD on Congress July 2023 voting outcomes.
+
+    This is a robustness/placebo check: Congress election is 2 months
+    after the municipal election, but voters choose national representatives,
+    not local ones. If backlash is local-policy-specific, it should be
+    weaker or absent in Congress voting.
+    """
+    print("\n" + "=" * 60)
+    print("ELECTION RD — CONGRESS (Robustness)")
+    print("=" * 60)
+
+    vote_outcomes = ["share_vox", "share_pp", "share_psoe"]
+    if "share_sumar" in congress.columns:
+        vote_outcomes.append("share_sumar")
+
+    results = []
+    for outcome in vote_outcomes:
+        if outcome not in congress.columns:
+            continue
+        res = run_rd(congress, outcome, bandwidth=BW_DEFAULT,
+                     province_fe=True, cluster_var="cod_ine")
+        if res:
+            res["outcome"] = outcome
+            res["election_type"] = "congress"
+            res["year"] = 2023
+            results.append(res)
+            print(f"    {outcome:15s}  coef={res['coef']:+.5f}  "
+                  f"SE={res['se']:.5f}  p={res['pval']:.3f}{star(res['pval'])}  "
+                  f"N={res['n']}")
+
+    return results
+
+
+def save_election_results(muni_results, congress_results):
+    """Save combined election RD results table."""
+    all_res = muni_results + congress_results
+    if not all_res:
+        return
+
+    df = pd.DataFrame(all_res)
+    cols = ["election_type", "year", "outcome", "label", "coef", "se",
+            "pval", "ci_low", "ci_high", "n", "n_above", "n_below",
+            "r2", "outcome_mean"]
+    cols = [c for c in cols if c in df.columns]
+    df = df[cols]
+
+    path = os.path.join(TAB_DIR, "rd_elections.csv")
+    df.to_csv(path, index=False)
+    print(f"\n  Saved: {path}")
+    print(f"    {len(df)} rows")
+
+    return df
+
+
+def plot_election_rd(election, congress=None):
+    """RD scatter plot for key voting outcomes."""
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+
+    datasets = [
+        (election[election["year"] == 2019], "share_vox",
+         "Vox — Municipal 2019 (pre-ZBE)", axes[0, 0]),
+        (election[election["year"] == 2023], "share_vox",
+         "Vox — Municipal 2023 (post-ZBE)", axes[0, 1]),
+        (election[election["year"] == 2023], "share_pp",
+         "PP — Municipal 2023 (post-ZBE)", axes[1, 0]),
+    ]
+    if congress is not None:
+        datasets.append(
+            (congress, "share_vox",
+             "Vox — Congress July 2023 (robustness)", axes[1, 1])
+        )
+    else:
+        datasets.append(
+            (election[election["year"] == 2023], "share_psoe",
+             "PSOE — Municipal 2023 (post-ZBE)", axes[1, 1])
+        )
+
+    for data, outcome, title, ax in datasets:
+        sub = data.dropna(subset=[outcome, "pop_distance_50k"]).copy()
+        sub = sub[sub["pop_distance_50k"].abs() <= BW_DEFAULT]
+
+        if len(sub) == 0:
+            ax.set_title(title + " (no data)")
+            continue
+
+        # Bin scatter
+        sub["bin"] = pd.cut(sub["pop_distance_50k"], bins=30)
+        binned = sub.groupby("bin", observed=True)[outcome].mean()
+
+        bin_centers = [(b.left + b.right) / 2 for b in binned.index]
+        ax.scatter(bin_centers, binned.values, s=40, alpha=0.7,
+                   color="steelblue", edgecolors="white", linewidth=0.5)
+
+        # Separate linear fits
+        below = sub[sub["pop_distance_50k"] < 0]
+        above = sub[sub["pop_distance_50k"] >= 0]
+
+        for segment, color in [(below, "navy"), (above, "darkred")]:
+            if len(segment) > 5:
+                z = np.polyfit(segment["pop_distance_50k"], segment[outcome], 1)
+                p = np.poly1d(z)
+                xs = np.linspace(segment["pop_distance_50k"].min(),
+                                 segment["pop_distance_50k"].max(), 100)
+                ax.plot(xs, p(xs), color=color, linewidth=2)
+
+        ax.axvline(0, color="red", linestyle="--", alpha=0.5)
+        ax.set_title(title, fontsize=11)
+        ax.set_xlabel("Population distance from 50k")
+        ax.set_ylabel(outcome)
+
+    plt.tight_layout()
+    path = os.path.join(FIG_DIR, "rd_elections.png")
+    plt.savefig(path, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"  Saved: {path}")
 
 
 # ===================================================================
@@ -533,7 +674,7 @@ def main():
     print("09 — Main RD Analysis")
     print("=" * 70)
 
-    fleet, election = load_panels()
+    fleet, election, congress = load_panels()
 
     # Primary analysis: Fleet composition
     fleet_rd_main(fleet)
@@ -547,8 +688,19 @@ def main():
     # First-stage diagnostic
     first_stage_diagnostic(fleet)
 
-    # Election analysis
-    election_rd(election)
+    # Election analysis — municipal
+    muni_results = election_rd(election)
+
+    # Election analysis — congress (robustness)
+    congress_results = []
+    if congress is not None:
+        congress_results = congress_rd(congress)
+
+    # Save combined election results
+    save_election_results(muni_results, congress_results)
+
+    # RD scatter plots for elections
+    plot_election_rd(election, congress)
 
     print("\n" + "=" * 70)
     print("Done.")
