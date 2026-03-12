@@ -9,3 +9,4 @@ seaborn>=0.12
 statsmodels>=0.14
 rdrobust>=1.1
 numpy>=1.24
+access-parser>=0.0.6

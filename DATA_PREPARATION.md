@@ -158,6 +158,36 @@ python spain-zbe/src/download/03_download_elections_py.py
 
 ---
 
+### 1.4 Hacienda Municipal Fiscal Data (Script: `03b_download_hacienda_fiscal.py`)
+
+**Purpose**: Municipal budget settlement data (liquidaciones presupuestarias) for testing whether fiscal structure predicts ZBE compliance.
+
+**Source**: CONPREL — Ministerio de Hacienda
+- Portal: https://serviciostelematicosext.hacienda.gob.es/SGFAL/CONPREL
+
+**Years**: 2019–2023
+
+**How to run**:
+```bash
+python spain-zbe/src/download/03b_download_hacienda_fiscal.py
+```
+
+**What the script does**:
+1. Downloads annual ZIP files from CONPREL (each ~50 MB)
+2. URL pattern: `DescargaFichero?CCAA=&TipoDato=Liquidaciones&Ejercicio={year}&TipoPublicacion=Access`
+3. Saves to `data/raw/hacienda_fiscal/Liquidaciones{year}.zip`
+
+**ZIP contents**: Access database (.accdb for 2022+, .mdb for 2019-2021) with tables:
+- `tb_inventario`: entity registry (maps internal IDs to INE 5-digit municipal codes via `codente` field)
+- `tb_economica`: revenue and expenditure by budget classification (`tipreig`=I for income, G for expenditure; `cdcta` = budget chapter code)
+- `tb_remanente`: treasury remainder data
+
+**Cleaning** (`05c_clean_hacienda_fiscal.py`): Extracts chapter-level aggregates for Ayuntamiento entities (suffix AA000), computes fiscal ratios.
+
+**Merging** (`07b_merge_fiscal.py`): Averages 2019-2020 (pre-mandate baseline) and merges onto election panel by cod_ine.
+
+---
+
 ## Stage 2: Clean Data
 
 Scripts go in `spain-zbe/src/clean/` (currently empty — to be implemented).

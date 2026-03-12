@@ -48,7 +48,17 @@ Key reference: Colantone et al. (2024, APSR) on Milan's Area B and Lega voting.
 - **Key variables**: Vox vote share, PP vote share, turnout, by municipality
 - **Granularity**: Down to ballot-box (mesa) level; municipality level is sufficient
 
-### 5. MITECO — ZBE Implementation Status
+### 5. Ministerio de Hacienda — Municipal Fiscal Data (Liquidaciones)
+- **What**: Annual budget settlements (liquidaciones presupuestarias) for all municipalities
+- **Portal**: CONPREL at https://serviciostelematicosext.hacienda.gob.es/SGFAL/CONPREL
+- **Format**: ZIP files containing Access databases (.accdb for 2022+, .mdb for earlier years)
+- **Key tables**: tb_economica (revenue/expenditure by budget chapter), tb_inventario (entity registry)
+- **Key variables**: own revenue (ch.1-3), transfers from Estado/CCAA/EU (ch.4+7 sub-chapters), debt service (ch.3 expense), capital spending (ch.6 expense)
+- **Matching**: Entity code starts with INE 5-digit municipal code; filter to Ayuntamiento entities (suffix AA000)
+- **Years available**: 2002-2024 (we use 2019-2023)
+- **Scripts**: `03b_download_hacienda_fiscal.py` → `05c_clean_hacienda_fiscal.py` → `07b_merge_fiscal.py` → `12b_fiscal_zbe_adoption.py`
+
+### 6. MITECO — ZBE Implementation Status
 - **What**: Interactive map classifying obligated municipalities as vigente/en trámite/pendiente
 - **Portal**: https://www.miteco.gob.es/en/calidad-y-evaluacion-ambiental/temas/movilidad/zonas_de_bajas_emisiones_en_espana.html
 - **Note**: No time-series archive. May need to hand-code implementation dates from
