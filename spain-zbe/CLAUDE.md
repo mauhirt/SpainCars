@@ -58,7 +58,17 @@ Key reference: Colantone et al. (2024, APSR) on Milan's Area B and Lega voting.
 - **Years available**: 2002-2024 (we use 2019-2023)
 - **Scripts**: `03b_download_hacienda_fiscal.py` → `05c_clean_hacienda_fiscal.py` → `07b_merge_fiscal.py` → `12b_fiscal_zbe_adoption.py`
 
-### 6. MITECO — ZBE Implementation Status
+### 6. BDNS — Next Generation EU ZBE Fund Allocations
+- **What**: Municipality-level NGEU fund allocations for ZBE implementation and sustainable urban transport
+- **Portal**: BDNS (Base de Datos Nacional de Subvenciones) API at https://www.pap.hacienda.gob.es/bdnstrans/api/
+- **Program**: "Ayudas a municipios para la implantación de ZBE y la transformación digital y sostenible del transporte urbano"
+- **Convocatorias**: 2021 (BDNS 576282, EUR 1.16bn, 169 grants) + 2022 (BDNS 640563, EUR 485m, 109 grants)
+- **Key variables**: total_eu_funds, eu_funds_2021, eu_funds_2022, eu_funds_pc (per capita)
+- **Matching**: Beneficiary CIF Pddmmmcc → INE code dd+mmm (5-digit zero-padded)
+- **Coverage**: 187 unique municipalities, 73/148 (49%) of >50k municipalities
+- **Scripts**: `03c_download_mitma_zbe_funds.py` → `05d_clean_mitma_zbe_funds.py` → `07c_merge_eu_funds.py` → `12b_fiscal_zbe_adoption.py`
+
+### 7. MITECO — ZBE Implementation Status
 - **What**: Interactive map classifying obligated municipalities as vigente/en trámite/pendiente
 - **Portal**: https://www.miteco.gob.es/en/calidad-y-evaluacion-ambiental/temas/movilidad/zonas_de_bajas_emisiones_en_espana.html
 - **Note**: No time-series archive. May need to hand-code implementation dates from

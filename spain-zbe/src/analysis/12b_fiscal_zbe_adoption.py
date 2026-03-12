@@ -146,6 +146,8 @@ def fiscal_predicts_zbe(df):
         ("fiscal_transfers_pc", "Transfers per capita (EUR)"),
         ("fiscal_debt_service_pc", "Debt service per capita (EUR)"),
         ("fiscal_capital_spending_pc", "Capital spending per capita (EUR)"),
+        ("total_eu_funds", "NGEU ZBE funds received (EUR)"),
+        ("eu_funds_pc", "NGEU ZBE funds per capita (EUR)"),
     ]
 
     desc_rows = []
@@ -218,6 +220,39 @@ def fiscal_predicts_zbe(df):
         _print_logit(m5, ["left", "log_pop", "fiscal_own_revenue_share",
                            "fiscal_debt_burden"])
         models["M5_capacity"] = m5
+
+    # Model 6: EU fund receipt (binary)
+    if "total_eu_funds" in sub.columns:
+        sub["received_eu_funds"] = (sub["total_eu_funds"] > 0).astype(int)
+        print("\n  --- Model 6: + Received NGEU ZBE funds (binary) ---")
+        X6 = sm.add_constant(sub[["left", "log_pop", "received_eu_funds"]])
+        m6 = sm.Logit(sub["zbe_any"], X6).fit(disp=0)
+        _print_logit(m6, ["left", "log_pop", "received_eu_funds"])
+        models["M6_eu_funds_binary"] = m6
+
+    # Model 7: EU funds per capita
+    if "eu_funds_pc" in sub.columns:
+        sub7 = sub.dropna(subset=["eu_funds_pc"]).copy()
+        if len(sub7) >= 20:
+            print("\n  --- Model 7: + NGEU ZBE funds per capita ---")
+            X7 = sm.add_constant(sub7[["left", "log_pop", "eu_funds_pc"]])
+            m7 = sm.Logit(sub7["zbe_any"], X7).fit(disp=0)
+            _print_logit(m7, ["left", "log_pop", "eu_funds_pc"])
+            models["M7_eu_funds_pc"] = m7
+
+    # Model 8: Transfers PC + EU funds PC (both fiscal channels)
+    if ("fiscal_transfers_pc" in sub.columns and
+            "eu_funds_pc" in sub.columns):
+        sub8 = sub.dropna(subset=["fiscal_transfers_pc", "eu_funds_pc"]).copy()
+        if len(sub8) >= 20:
+            print("\n  --- Model 8: Transfers PC + NGEU funds PC ---")
+            X8 = sm.add_constant(sub8[["left", "log_pop",
+                                        "fiscal_transfers_pc",
+                                        "eu_funds_pc"]])
+            m8 = sm.Logit(sub8["zbe_any"], X8).fit(disp=0)
+            _print_logit(m8, ["left", "log_pop", "fiscal_transfers_pc",
+                               "eu_funds_pc"])
+            models["M8_both_fiscal"] = m8
 
     # ─── Save regression table ───
     _save_regression_table(models, sub)

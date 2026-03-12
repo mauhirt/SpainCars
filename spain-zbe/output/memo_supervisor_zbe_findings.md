@@ -250,10 +250,48 @@ but Section 6 becomes purely descriptive: conditionality increased
 compliance on average, but the *within-city* channel was not fiscal
 exposure.
 
-**Other valuable additions:**
-- **Municipality-level EU fund allocations**: Which cities received Next
-  Generation funds for ZBE implementation and how much. Available from
-  Ministerio de Transportes.
+### 3.6 New data: NGEU fund allocations now integrated
+
+I downloaded municipality-level Next Generation EU fund allocations for ZBE
+implementation from the BDNS (Base de Datos Nacional de Subvenciones). The
+program "Ayudas a municipios para la implantación de ZBE y la transformación
+digital y sostenible del transporte urbano" ran two calls:
+
+- **2021 call** (BDNS 576282): EUR 1,156m to 169 municipalities
+- **2022 call** (BDNS 640563): EUR 485m to 109 municipalities
+- **Total**: EUR 1,641m to 187 unique municipalities (85 received in both)
+- **Coverage**: 73/148 (49%) of >50k municipalities received NGEU ZBE funds
+
+**Descriptive finding**: Implementers received EUR 40.45/capita vs.
+EUR 29.40/capita for non-implementers (+37%). In raw totals, the gap is
+even larger (EUR 31.0m vs. EUR 6.3m), but this is driven by city size.
+
+**Logit results (added to 12b):**
+
+| Model | Key predictor | OR | p-value | Note |
+|-------|--------------|-----|---------|------|
+| M6: + Received NGEU funds (binary) | received_eu_funds | 1.29 | 0.672 | Not significant |
+| M7: + NGEU funds per capita | eu_funds_pc | 1.01 | 0.304 | Direction positive, not significant |
+| M8: Transfers PC + NGEU funds PC | fiscal_transfers_pc | 1.00 | 0.574 | Neither channel significant alone |
+| | eu_funds_pc | 1.01 | 0.269 | |
+
+**Interpretation**: Receiving more NGEU ZBE funds per capita is associated
+with higher compliance, but the relationship is not statistically significant
+(p=0.27–0.30). This is consistent with two readings:
+
+1. *Insufficient power*: With N=70 and 8 implementers, we may simply lack
+   the power to detect a real effect of moderate size.
+2. *Funds followed rather than caused compliance*: The program was
+   competitive — municipalities applied for funds. Early movers that already
+   planned ZBEs may have been more likely to apply and receive funds.
+   Reverse causality is plausible.
+
+The NGEU fund data is most valuable as a *control variable* in the
+compliance model: even after conditioning on funds received, the
+transfers-per-capita result (if it holds with N≈58) captures a *different*
+channel — the threat of losing regular transfers, not ZBE-specific funds.
+
+**Other additions still needed:**
 - **Detailed compliance timeline**: Exact activation dates for each city's
   ZBE. Partially available from MITECO's interactive map.
 
@@ -274,9 +312,9 @@ exposure.
    - *Journal of Public Policy* or *JPART* (implementation failure)
    - *Environmental Politics* (EU climate policy)
 
-3. **Should I invest in collecting the additional data** (EU fund
-   allocations, detailed compliance timeline), or is the current evidence
-   sufficient for a first draft?
+3. **EU fund data is now integrated** (see Section 3.6). NGEU allocations
+   don't predict compliance significantly, but are useful as controls.
+   Should I still pursue the detailed compliance timeline?
 
 4. **Timing on the 2025 DGT fleet data.** The municipal-level data for
    2025 should appear on DGT's portal around mid-2026. Should I wait for
@@ -301,7 +339,7 @@ exposure.
 |--------|----------|------------|
 | 11 | DiD: ZBE implementers vs non-implementers (Vox) | Suggestive but driven by Barcelona floor effect |
 | 12 | Party politics of ZBE adoption | Null — party does not predict adoption (p=0.16) |
-| 12b | Fiscal predictors of ZBE compliance | Per-capita transfers significant (p=0.049); all ratio measures null |
+| 12b | Fiscal predictors of ZBE compliance | Per-capita transfers marginal (p=0.049); NGEU funds positive but n.s. (p=0.30); all ratio measures null |
 | 13 | RD: Fleet composition at 50k threshold | Null — zero discontinuity, all years (DiRD p=0.89) |
 
 All code, data, and outputs are in the SpainCars repository.
