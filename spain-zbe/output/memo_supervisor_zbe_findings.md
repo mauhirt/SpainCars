@@ -152,31 +152,105 @@ Mildenberger's (2020, *Carbon Captured*) argument about how concentrated
 opponents block diffuse-benefit policies, and to Trebilcock (2014,
 *Dealing with Losers*) on the political economy of policy transitions.
 
-### 3.3 Proposed paper structure
+### 3.3 New finding: fiscal conditionality and the per-capita channel
+
+I downloaded municipal budget settlement data (liquidaciones presupuestarias)
+from the Ministerio de Hacienda's CONPREL portal for 2019–2023 and tested
+whether fiscal characteristics predict ZBE compliance.
+
+**Setup:** Logit models predicting binary compliance status (vigente=1,
+all others=0) among >50k municipalities, using baseline (2019–2020 average)
+fiscal variables to avoid post-treatment contamination. Key challenge:
+fiscal ratios (e.g., transfer dependency = transfers/total revenue) are
+mechanically correlated with city size, since larger cities have higher
+own-source revenue. Per-capita measures resolve this — transfers per capita
+correlates only r=0.09 with log(population).
+
+**Results (logit, >50k municipalities, N≈63):**
+
+| Model | Key predictor | OR | p-value | Note |
+|-------|--------------|-----|---------|------|
+| Baseline (log pop only) | log(pop) | 3.61 | <0.001 | Size is the dominant predictor |
+| + Transfer dependency | transfer_dep | 0.82 | 0.73 | Confounded with size |
+| + Debt burden | debt_burden | 0.41 | 0.62 | Not significant |
+| + EU transfer share | eu_share | 1.15 | 0.88 | Not significant |
+| + Own revenue share | own_rev_share | 1.23 | 0.67 | Not significant |
+| **Per-capita transfers** | **transfers_pc** | **1.006** | **0.049** | **Significant, controlling for log(pop)** |
+
+**Interpretation:** Among >50k municipalities, those receiving more
+intergovernmental transfers per capita were marginally more likely to
+comply with the ZBE mandate. The effect size is modest (OR=1.006, meaning
+each additional EUR per capita in transfers raises the odds of compliance
+by 0.6%), but it is the *only* fiscal variable that survives controlling
+for city size. This is consistent with a fiscal conditionality mechanism:
+cities with greater exposure to intergovernmental transfers had more to
+lose from the EU fund clawback and transport subsidy threats.
+
+**Important caveats:**
+- p=0.049 is marginal; this would not survive a multiple-testing correction
+- The result is driven by the post-conditionality compliers (N≈9 cities
+  that moved from non-compliance to compliance after the fiscal threats).
+  The pre-conditionality implementers (early movers) show no fiscal pattern.
+- With N≈63 municipalities and a binary outcome, statistical power is limited
+- The per-capita measure resolves the size confound, but city size (log pop)
+  remains the overwhelmingly dominant predictor
+
+**Bottom line:** This is suggestive evidence for the fiscal conditionality
+mechanism — enough to motivate the story in Section 6 of the paper, but
+too underpowered to be a standalone result. It needs the 2025 data to
+become credible (see Section 3.5).
+
+### 3.4 Proposed paper structure (revised)
 
 > **"Why Mandates Fail: Low-Emission Zones and the Politics of
 > Non-Compliance in Spain"**
 
 1. **Institutional background**: Climate law, ZBE mandate, 50k threshold,
    EU clean air context
-2. **Measuring compliance**: Original hand-coded ZBE status for all 151
+2. **Measuring compliance**: Original hand-coded ZBE status for all 151+
    cities (enforced / nominal / delayed / none) — descriptive contribution
 3. **The threshold had no bite**: RD on fleet composition shows zero
    discontinuity (Section 2.2). Cleanest empirical result.
 4. **What predicts compliance?** Not governing party; only city size.
-   Logit analysis with institutional controls.
+   Logit analysis with institutional controls. **Fiscal controls** from
+   Hacienda data (transfer dependency, debt burden, own revenue share)
+   included as covariates.
 5. **Why mandates fail without enforcement**: Three mechanisms —
    (a) no sanctions in the law, (b) local electoral costs vs. diffuse
    benefits, (c) coordination failure among peer cities
 6. **Fiscal conditionality works**: Compliance tripled after EU fund
-   clawback threats and transport subsidy withdrawal. Pre/post analysis
-   if 2025 fleet data becomes available.
+   clawback threats and transport subsidy withdrawal. **Mechanism test:**
+   per-capita transfers predict post-conditionality compliance (p=0.049),
+   consistent with fiscal exposure driving the response. Pre/post analysis
+   with 2025 fleet data if available.
 
-### 3.4 What additional data would strengthen this
+### 3.5 What additional data would strengthen this
 
-- **2025 DGT fleet data** (expected release ~mid 2026): Would allow testing
-  whether cities that complied under fiscal pressure show fleet composition
-  changes — completing the enforcement mechanism story.
+**The 2025 DGT fleet data (expected mid-2026) changes things dramatically.**
+By January 2026, ~169 municipalities are obligated and ~58 have ZBEs
+vigentes. If you can code compliance status for all 169 and merge with
+fiscal data, you have a proper cross-section with real power. At that
+point the per-capita transfers result either replicates with N≈58
+compliers or it doesn't — and either answer is informative.
+
+*Scenario A: The result holds.* With N≈58 compliers (vs. ~111
+non-compliers), you have a well-powered logit. If transfers per capita
+remains significant controlling for log(population), this is credible
+evidence that fiscal conditionality operated through the transfer channel
+— cities with more to lose complied faster. This becomes the headline
+result of Section 6 and elevates the paper from "descriptive non-compliance
+story" to "mechanism-identified compliance paper."
+
+*Scenario B: The result disappears.* If the relationship washes out with
+more data, that is equally informative — it means the early post-
+conditionality compliers were not systematically the most fiscally
+exposed cities. Non-compliance was driven by something else (political
+will, administrative capacity, local opposition). The paper still works
+but Section 6 becomes purely descriptive: conditionality increased
+compliance on average, but the *within-city* channel was not fiscal
+exposure.
+
+**Other valuable additions:**
 - **Municipality-level EU fund allocations**: Which cities received Next
   Generation funds for ZBE implementation and how much. Available from
   Ministerio de Transportes.
@@ -204,7 +278,14 @@ opponents block diffuse-benefit policies, and to Trebilcock (2014,
    allocations, detailed compliance timeline), or is the current evidence
    sufficient for a first draft?
 
-4. **Connection to my other project.** The US climate litigation paper
+4. **Timing on the 2025 DGT fleet data.** The municipal-level data for
+   2025 should appear on DGT's portal around mid-2026. Should I wait for
+   this before circulating a draft, or write up the current results and
+   plan a revision? The fiscal conditionality result (Section 3.3) goes
+   from suggestive (N≈9 post-conditionality compliers) to potentially
+   definitive (N≈58) with the new data.
+
+5. **Connection to my other project.** The US climate litigation paper
    (ClimateLiterature repo) studies the *opposite* phenomenon — subnational
    governments proactively using courts to advance climate policy. There
    may be a conceptual link worth developing: in both cases, subnational
@@ -220,6 +301,7 @@ opponents block diffuse-benefit policies, and to Trebilcock (2014,
 |--------|----------|------------|
 | 11 | DiD: ZBE implementers vs non-implementers (Vox) | Suggestive but driven by Barcelona floor effect |
 | 12 | Party politics of ZBE adoption | Null — party does not predict adoption (p=0.16) |
+| 12b | Fiscal predictors of ZBE compliance | Per-capita transfers significant (p=0.049); all ratio measures null |
 | 13 | RD: Fleet composition at 50k threshold | Null — zero discontinuity, all years (DiRD p=0.89) |
 
 All code, data, and outputs are in the SpainCars repository.
