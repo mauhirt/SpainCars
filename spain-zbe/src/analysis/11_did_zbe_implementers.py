@@ -60,38 +60,61 @@ os.makedirs(TAB_DIR, exist_ok=True)
 # NOTE: "Active" means restrictions were being enforced, not just
 # that an ordinance was approved.
 
+# -------------------------------------------------------------------
+# STRICT definition: label-based enforcement with cameras/fines active
+# before May 28, 2023. Excludes cities that merely relabeled pre-existing
+# pedestrian zones or approved an ordinance without real enforcement.
+# -------------------------------------------------------------------
+ZBE_STRICT = {
+    # cod_ine: (municipality, ZBE name, approx activation, enforcement)
+    "28079": ("Madrid", "Madrid 360 / ZBEDEP", "2021-12",
+              "Fines since Dec 2021 (centro); full-city ZBE Jan 2022"),
+    "08019": ("Barcelona", "ZBE Rondes", "2020-01",
+              "Cameras + fines since Jan 2020; >95 km2"),
+    "08205": ("Sant Cugat del Vallès", "ZBE Sant Cugat", "2021-05",
+              "Fines since Nov 2021; 4 km2; L-V 7-20h"),
+    "08217": ("Sant Joan Despí", "ZBE AMB", "2022-01",
+              "Same regime as Barcelona ZBE Rondes; L-V 7-20h"),
+    "08015": ("Badalona", "ZBE AMB", "2023-03",
+              "Trial year from Mar 2023; fines from Jan 2024; later postponed to 2027"),
+}
+
+# Barcelona metropolitan area municipalities under AMB ZBE Rondes:
+# These are technically part of Barcelona's ZBE — same cameras, same rules.
+ZBE_BARCELONA_METRO = {
+    "08101": ("L'Hospitalet de Llobregat", "ZBE AMB", "2020-01"),
+    "08245": ("Santa Coloma de Gramenet", "ZBE AMB", "2020-01"),
+    "08073": ("Cornellà de Llobregat", "ZBE AMB", "2020-01"),
+    "08169": ("El Prat de Llobregat", "ZBE AMB", "2020-01"),
+    "08279": ("Terrassa", "ZBE AMB", "2020-01"),
+    "08187": ("Sabadell", "ZBE AMB", "2020-01"),
+}
+
+# -------------------------------------------------------------------
+# BROAD definition: includes cities that formally designated a ZBE
+# (even if it's a relabeled pedestrian zone with no label-based enforcement)
+# -------------------------------------------------------------------
+ZBE_NOMINAL = {
+    "41091": ("Sevilla", "ZBE Casco Antiguo / Cartuja", "2023-01",
+              "Pre-existing access restrictions; Cartuja Jan 2023 info phase; fines from Jul 2024"),
+    "14021": ("Córdoba", "ZBE Córdoba", "2023-02",
+              "Relabeled pre-existing ACIRE zones; 24/7"),
+    "36038": ("Pontevedra", "ZBE Pontevedra", "2023-01",
+              "Traffic-calmed centre since ~1999; relabeled as ZBE; no label-based restrictions"),
+    "15030": ("Coruña, A", "ZBE A Coruña", "2023-01",
+              "Pre-existing pedestrianised areas renamed ZBE; no label restrictions"),
+    "28123": ("Rivas-Vaciamadrid", "ZBE Colegios", "2021-09",
+              "School-zone ZBE only; active on school days during entry/exit hours"),
+}
+
+# NOTE: Valencia NOT active before May 2023 — APR Ciutat Vella declared
+# ZBE in Dec 2023. Valladolid activated Nov 2024. These are controls.
+
+# Combined: all municipalities with any form of ZBE before May 2023
 ZBE_ACTIVE_BY_MAY_2023 = {
-    # cod_ine: (municipality, ZBE name, approx activation date)
-    "28079": ("Madrid", "Madrid 360", "2022-01"),
-    # Madrid Central (Nov 2018) → replaced by Madrid 360 (Jan 2022)
-    "08019": ("Barcelona", "ZBE Rondes de Barcelona", "2020-01"),
-    # Barcelona ZBE started Jan 2020; expanded progressively
-    "46250": ("València", "ZBE València", "2022-12"),
-    # Approved Dec 2022, camera enforcement began early 2023
-    "41091": ("Sevilla", "ZBE Sevilla", "2023-01"),
-    # Sevilla ZBE started Jan 2023
-    "14021": ("Córdoba", "ZBE Córdoba", "2023-01"),
-    # Córdoba ZBE activated Jan 2023
-    "36038": ("Pontevedra", "ZBE Pontevedra", "2019-01"),
-    # Pontevedra had pedestrianised centre since ~2011; ZBE formalised
-    "15030": ("Coruña, A", "ZBE A Coruña", "2023-04"),
-    # A Coruña ZBE activated April 2023
-    "47186": ("Valladolid", "ZBE Valladolid", "2023-01"),
-    # Valladolid ZBE activated Jan 2023
-    "08015": ("Badalona", "ZBE Metropolitana Barcelona", "2020-01"),
-    # Part of Barcelona metropolitan ZBE
-    "08205": ("Sant Cugat del Vallès", "ZBE Metropolitana Barcelona", "2020-01"),
-    "08217": ("Sant Joan Despí", "ZBE Metropolitana Barcelona", "2020-01"),
-    # Note: Sant Joan Despí is <50k, voluntary/regional mandate
-    "28123": ("Rivas-Vaciamadrid", "ZBE Rivas", "2023-02"),
-    # Rivas approved late 2022, active early 2023
-    # Additional Barcelona metropolitan area municipalities under AMB ZBE:
-    "08101": ("L'Hospitalet de Llobregat", "ZBE Metropolitana Barcelona", "2020-01"),
-    "08245": ("Santa Coloma de Gramenet", "ZBE Metropolitana Barcelona", "2020-01"),
-    "08073": ("Cornellà de Llobregat", "ZBE Metropolitana Barcelona", "2020-01"),
-    "08169": ("El Prat de Llobregat", "ZBE Metropolitana Barcelona", "2020-01"),
-    "08279": ("Terrassa", "ZBE Metropolitana Barcelona", "2020-01"),
-    "08187": ("Sabadell", "ZBE Metropolitana Barcelona", "2020-01"),
+    **{k: v[:3] for k, v in ZBE_STRICT.items()},
+    **ZBE_BARCELONA_METRO,
+    **{k: v[:3] for k, v in ZBE_NOMINAL.items()},
 }
 
 
@@ -122,14 +145,19 @@ def build_did_panel(election, fleet):
     # Keep 2019 and 2023 elections
     df = df[df["year"].isin([2019, 2023])].copy()
 
-    # Treatment indicator: municipality had ZBE active by May 2023
-    df["zbe_active"] = df["cod_ine"].isin(ZBE_ACTIVE_BY_MAY_2023.keys()).astype(int)
+    # Treatment indicators: strict (label-enforced) and broad (any ZBE)
+    strict_codes = set(ZBE_STRICT.keys()) | set(ZBE_BARCELONA_METRO.keys())
+    broad_codes = set(ZBE_ACTIVE_BY_MAY_2023.keys())
+
+    df["zbe_strict"] = df["cod_ine"].isin(strict_codes).astype(int)
+    df["zbe_active"] = df["cod_ine"].isin(broad_codes).astype(int)
 
     # Post indicator
     df["post"] = (df["year"] == 2023).astype(int)
 
-    # DiD interaction
+    # DiD interactions
     df["zbe_x_post"] = df["zbe_active"] * df["post"]
+    df["zbe_strict_x_post"] = df["zbe_strict"] * df["post"]
 
     # Merge fleet data: average fleet composition by municipality-year
     # Use the closest year: 2019 for 2019 election, 2022 for 2023 election
@@ -302,6 +330,74 @@ def run_did(df):
     results_df.to_csv(os.path.join(TAB_DIR, "did_zbe_main.csv"), index=False)
     print(f"\n  Saved: {os.path.join(TAB_DIR, 'did_zbe_main.csv')}")
     return results_df
+
+
+# ===================================================================
+# STRICT vs BROAD TREATMENT DEFINITION
+# ===================================================================
+def run_did_strict_vs_broad(df):
+    """
+    Compare DiD results under strict (label-enforced ZBE with cameras/fines)
+    vs broad (any ZBE designation, including relabeled pedestrian zones).
+
+    The strict definition includes only: Madrid, Barcelona + AMB metro,
+    Sant Cugat, Sant Joan Despí, and Badalona (trial).
+
+    The broad definition adds: Sevilla, Córdoba, Pontevedra, A Coruña,
+    Rivas-Vaciamadrid — cities where ZBE meant relabeling existing zones.
+    """
+    print("\n" + "=" * 60)
+    print("STRICT vs BROAD ZBE DEFINITION — Vox DiD")
+    print("=" * 60)
+
+    outcome = "share_vox"
+    sub = df.dropna(subset=[outcome]).copy()
+    star_fn = lambda p: "***" if p < 0.01 else ("**" if p < 0.05 else ("*" if p < 0.1 else ""))
+
+    results = []
+    for treat_var, treat_label in [
+        ("zbe_strict", "STRICT (label-enforced)"),
+        ("zbe_active", "BROAD (any ZBE designation)"),
+    ]:
+        interact = f"{treat_var}_x_post" if treat_var == "zbe_strict" else "zbe_x_post"
+
+        n_treat = sub[sub[treat_var] == 1]["cod_ine"].nunique()
+        n_ctrl = sub[sub[treat_var] == 0]["cod_ine"].nunique()
+
+        prov_dummies = pd.get_dummies(sub["cod_provincia"], prefix="prov",
+                                       drop_first=True, dtype=float)
+        X_cols = [treat_var, "post", interact, "log_pop"]
+        X = sm.add_constant(pd.concat([sub[X_cols], prov_dummies], axis=1))
+
+        try:
+            model = sm.OLS(sub[outcome], X).fit(
+                cov_type="cluster", cov_kwds={"groups": sub["cod_ine"]}
+            )
+        except Exception:
+            model = sm.OLS(sub[outcome], X).fit(cov_type="HC1")
+
+        coef = model.params[interact]
+        se = model.bse[interact]
+        pval = model.pvalues[interact]
+
+        print(f"  {treat_label:35s}  N_treat={n_treat:>3}  N_ctrl={n_ctrl:>3}  "
+              f"coef={coef:+.5f}  SE={se:.5f}  p={pval:.3f}{star_fn(pval)}")
+        results.append({
+            "definition": treat_label,
+            "n_treat": n_treat,
+            "n_ctrl": n_ctrl,
+            "coef": coef,
+            "se": se,
+            "pval": pval,
+        })
+
+    if results:
+        pd.DataFrame(results).to_csv(
+            os.path.join(TAB_DIR, "did_zbe_strict_vs_broad.csv"), index=False
+        )
+        print(f"\n  Saved: {os.path.join(TAB_DIR, 'did_zbe_strict_vs_broad.csv')}")
+
+    return results
 
 
 # ===================================================================
@@ -661,6 +757,9 @@ def main():
 
     # Main DiD estimation
     results_df = run_did(df)
+
+    # Strict vs broad ZBE definition
+    run_did_strict_vs_broad(df)
 
     # Size-matched robustness
     run_did_size_matched(df)
